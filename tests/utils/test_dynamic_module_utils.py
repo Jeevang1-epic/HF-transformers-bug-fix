@@ -18,7 +18,7 @@ from pathlib import Path
 import pytest
 
 from transformers import dynamic_module_utils
-from transformers.dynamic_module_utils import get_cached_module_file, get_imports
+from transformers.dynamic_module_utils import get_cached_module_file, get_imports, get_relative_imports
 
 
 TOP_LEVEL_IMPORT = """
@@ -129,6 +129,26 @@ def test_import_parsing(tmp_path, case):
 
     parsed_imports = get_imports(tmp_file_path)
     assert parsed_imports == ["os"]
+
+
+def test_relative_import_parsing_from_dot_import(tmp_path):
+    tmp_file_path = os.path.join(tmp_path, "test_file.py")
+    with open(tmp_file_path, "w") as _tmp_file:
+        _tmp_file.write("from . import helper\n")
+
+    parsed_relative_imports = get_relative_imports(tmp_file_path)
+    assert set(parsed_relative_imports) == {"helper"}
+
+
+def test_relative_import_parsing_mixed_from_imports(tmp_path):
+    tmp_file_path = os.path.join(tmp_path, "test_file.py")
+    with open(tmp_file_path, "w") as _tmp_file:
+        _tmp_file.write(
+            "from .subpkg.module import MyClass\nfrom . import helper as _helper, other\nfrom . import *\n"
+        )
+
+    parsed_relative_imports = get_relative_imports(tmp_file_path)
+    assert set(parsed_relative_imports) == {"subpkg.module", "helper", "other"}
 
 
 def _create_local_module(module_dir: Path, module_code: str, helper_code: str | None = None):

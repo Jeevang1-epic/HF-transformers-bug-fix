@@ -133,12 +133,24 @@ def get_relative_imports(module_file: str | os.PathLike) -> list[str]:
     with open(module_file, encoding="utf-8") as f:
         content = f.read()
 
-    # Imports of the form `import .xxx`
-    relative_imports = re.findall(r"^\s*import\s+\.(\S+)\s*$", content, flags=re.MULTILINE)
-    # Imports of the form `from .xxx import yyy`
-    relative_imports += re.findall(r"^\s*from\s+\.(\S+)\s+import", content, flags=re.MULTILINE)
-    # Unique-ify
-    return list(set(relative_imports))
+    relative_imports = set()
+    tree = ast.parse(content)
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.ImportFrom) or node.level != 1:
+            continue
+
+        # `from .submodule import x` -> submodule
+        if node.module is not None:
+            relative_imports.add(node.module)
+            continue
+
+        # `from . import helper, other as alias` -> helper, other
+        for alias in node.names:
+            if alias.name == "*":
+                continue
+            relative_imports.add(alias.name)
+
+    return list(relative_imports)
 
 
 def get_relative_import_files(module_file: str | os.PathLike) -> list[str]:
@@ -164,7 +176,7 @@ def get_relative_import_files(module_file: str | os.PathLike) -> list[str]:
             new_imports.extend(get_relative_imports(f))
 
         module_path = Path(module_file).parent
-        new_import_files = [f"{str(module_path / m)}.py" for m in new_imports]
+        new_import_files = [f"{str(module_path.joinpath(*m.split('.')))}.py" for m in new_imports]
         files_to_check = [f for f in new_import_files if f not in all_relative_imports]
 
         no_change = len(files_to_check) == 0
